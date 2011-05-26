@@ -42,12 +42,18 @@
 
 ;;; Code:
 
-(provide 'java-docs)
+(require 'fakespace)
 
-(require 'cl)
-(require 'ido)
+(defpackage java-docs
+  (:use cl ido)
+  (:export java-docs java-docs-enable-cache java-docs-compress-cache
+	   java-docs-cache-dir java-docs-completing-read
+	   java-docs-short-completing-read java-docs-lookup insert-java-import
+	   add-java-import java-docs-completing-function java-docs-clear))
 
 (global-set-key "\C-hj" 'java-docs-lookup)
+
+;; Configuration
 
 (defvar java-docs-enable-cache (featurep 'hashtable-print-readable)
   "Enable caching for faster loads.")
@@ -58,64 +64,68 @@
 (defvar java-docs-cache-dir "~/.java-docs"
   "Location to store index information.")
 
-(defvar java-docs-loaded ()
+(defvar java-docs-completing-function
+  (if ido-mode 'ido-completing-read 'completing-read)
+  "Function used when performing a minibuffer read.")
+
+;; Local state
+
+(defvar loaded ()
   "List of loaded documentation directories.")
 
 (defvar java-docs-index (make-hash-table :test 'equal)
   "Index of documentation for quick lookups.")
 
-(defvar java-docs-class-list nil
+(defvar class-list nil
   "List of classes in the index.")
 
-(defvar java-docs-short-class-list nil
+(defvar short-class-list nil
   "Fully qualified names of classes in the index.")
 
-(defvar java-docs-completing-function
-  (if ido-mode 'ido-completing-read 'completing-read)
-  "Function used when performing a minibuffer read.")
-
-(defvar java-docs-current-root nil
+(defvar doc-root nil
   "Current root being indexed. Used to determine full class name.")
 
-(defvar java-docs-cache-version "-v3"
+(defvar cache-version "-v3"
   "Cache version, so we don't load the wrong cache.")
+
+;; Functions
 
 (defun java-docs (&rest dirs)
   "Set the Javadoc search path to DIRS and index them."
-  (let ((list (remove-if 'java-docs-loadedp (mapcar 'expand-file-name dirs))))
-    (dolist (java-docs-current-root list)
-      (java-docs-add java-docs-current-root)))
-  (setq java-docs-class-list
-	(sort* java-docs-class-list '< :key 'length))
-  (setq java-docs-short-class-list
-	(sort* (mapcar 'java-docs-short-name java-docs-class-list)
+  (let ((list (remove-if 'loadedp (mapcar 'expand-file-name dirs))))
+    (dolist (doc-root list)
+      (add-dir doc-root)))
+  (setq class-list
+	(sort* class-list '< :key 'length))
+  (setq short-class-list
+	(sort* (mapcar 'short-name class-list)
 	       '< :key 'length)))
 
-(defun java-docs-loadedp (dir)
+(defun loadedp (dir)
   "Return t if DIR has already been loaded."
-  (member dir java-docs-loaded))
+  (member dir loaded))
 
 (defun java-docs-clear ()
   "Clear all in-memory java-docs information."
-  (setq java-docs-class-list nil)
-  (setq java-docs-short-class-list nil)
-  (setq java-docs-loaded nil)
+  (setq class-list nil)
+  (setq short-class-list nil)
+  (setq loaded nil)
   (setq java-docs-index (make-hash-table :test 'equal)))
 
-(defun java-docs-add (dir)
+(defun add-dir (dir)
   "Add directory to directory list and either index or fetch the cache."
-  (add-to-list 'java-docs-loaded dir)
-  (let ((cache-name (concat (md5 dir) java-docs-cache-version
+  (add-to-list 'loaded dir)
+  (let ((cache-name (concat (md5 dir) cache-version
 			    (if java-docs-compress-cache ".gz" "")))
 	(hash (make-hash-table :test 'equal)))
     (if (and java-docs-enable-cache
 	     (file-exists-p (concat java-docs-cache-dir "/" cache-name)))
-	(java-docs-load-cache cache-name)
+	(load-cache cache-name)
       (java-docs-index dir hash)
-      (java-docs-save-cache cache-name dir hash)
-      (java-docs-add-hash hash))))
+      (save-cache cache-name dir hash)
+      (add-hash hash))))
 
-(defun java-docs-short-name (fullclass)
+(defun short-name (fullclass)
   "Return short name for given class."
   (let ((case-fold-search nil))
     (substring fullclass (string-match "[[:upper:]]" fullclass))))
@@ -126,18 +136,18 @@
     (maphash (lambda (k v) (setq keys (cons k keys))) hash)
     keys))
 
-(defun java-docs-load-cache (cache-name)
+(defun load-cache (cache-name)
   "Load a cache from disk."
   (let ((file (concat java-docs-cache-dir "/" cache-name)))
     (with-current-buffer (find-file-noselect file)
       (goto-char (point-min))
       (let ((hash (read (current-buffer))))
-	(java-docs-add-hash hash)
-	(setq java-docs-class-list
-	      (nconc java-docs-class-list (hash-table-keys hash))))
+	(add-hash hash)
+	(setq class-list
+	      (nconc class-list (hash-table-keys hash))))
       (kill-buffer))))
 
-(defun java-docs-save-cache (cache-name dir hash)
+(defun save-cache (cache-name dir hash)
   "Save a cache to the disk."
   (when java-docs-enable-cache
     (if (not (file-exists-p java-docs-cache-dir))
@@ -147,18 +157,11 @@
       (insert (prin1-to-string hash))
       (write-file (concat java-docs-cache-dir "/" cache-name)))))
 
-(defun java-docs-add-hash (hash)
+(defun add-hash (hash)
   "Combine HASH into the main index hash."
   (maphash (lambda (key val)
 	     (puthash key val java-docs-index))
 	   hash))
-
-(defun java-docs-update-list ()
-  "Update the completion list to match the index."
-  (setq java-docs-class-list nil)
-  (maphash (lambda (key val)
-	     (setq java-docs-class-list (cons key java-docs-class-list)))
-	   java-docs-index))
 
 (defun java-docs-index (dir hash)
   "Index the documentation in DIR into HASH."
@@ -166,32 +169,32 @@
 	 (files (remove-if 'file-directory-p list))
 	 (dirs (remove-if-not 'file-directory-p list)))
     (dolist (file files)
-      (java-docs-add-file file hash))
+      (add-file file hash))
     (dolist (dir dirs)
       (if (not (string-equal "class-use" (file-name-nondirectory dir)))
 	  (java-docs-index dir hash)))))
 
-(defun java-docs-add-file (fullfile hash)
+(defun add-file (fullfile hash)
   "Add a file to the index if it looks like a class."
   (let* ((file (file-name-nondirectory fullfile))
 	 (ext (file-name-extension fullfile))
 	 (class (file-name-sans-extension file))
-	 (rel (substring fullfile (1+ (length java-docs-current-root))))
+	 (rel (substring fullfile (1+ (length doc-root))))
 	 (fullclass (substitute ?. ?/ (file-name-sans-extension rel)))
 	 (case-fold-search nil))
     (when (and (string-equal ext "html")
 	       (string-match "^[A-Z].+" class))
       (puthash fullclass fullfile hash)
-      (setq java-docs-class-list
-	    (cons fullclass java-docs-class-list)))))
+      (setq class-list
+	    (cons fullclass class-list)))))
 
 (defun java-docs-completing-read ()
   "Query the user for a class name."
-  (funcall java-docs-completing-function "Class: " java-docs-class-list))
+  (funcall java-docs-completing-function "Class: " class-list))
 
 (defun java-docs-short-completing-read ()
   "Query the user for a short class name."
-  (funcall java-docs-completing-function "Class: " java-docs-short-class-list))
+  (funcall java-docs-completing-function "Class: " short-class-list))
 
 (defun java-docs-lookup (name)
   "Lookup based on class name."
@@ -202,10 +205,10 @@
 
 ;; Insert import functions
 
-(defvar java-docs-import-regexp "^import "
+(defvar import-regexp "^import "
   "Regular expression for finding import statements.")
 
-(defvar java-docs-package-regexp "^package "
+(defvar package-regexp "^package "
   "Regular expression for finding package statements.")
 
 (defun insert-java-import (name)
@@ -217,24 +220,24 @@
   "Return t if this source has a package statement."
   (save-excursion
     (goto-char (point-min))
-    (and (search-forward-regexp java-docs-package-regexp nil t) t)))
+    (and (search-forward-regexp package-regexp nil t) t)))
 
 (defun java-has-import ()
   "Return t if this source has at least one import statement."
   (save-excursion
     (goto-char (point-min))
-    (and (search-forward-regexp java-docs-import-regexp nil t) t)))
+    (and (search-forward-regexp import-regexp nil t) t)))
 
 (defun java-goto-first-import ()
   "Move cursor to the first import statement."
   (goto-char (point-min))
-  (search-forward-regexp java-docs-import-regexp)
+  (search-forward-regexp import-regexp)
   (move-beginning-of-line nil))
 
 (defun java-goto-last-import ()
   "Move cursor to the first import statement."
   (goto-char (point-max))
-  (search-backward-regexp java-docs-import-regexp)
+  (search-backward-regexp import-regexp)
   (move-end-of-line nil)
   (forward-char))
 
@@ -249,7 +252,7 @@
       (progn
 	(goto-char (point-min))
 	(if (java-in-package)
-	    (search-forward-regexp java-docs-package-regexp))
+	    (search-forward-regexp package-regexp))
 	(move-end-of-line nil)
 	(forward-char)
 	(insert "\n")
@@ -280,12 +283,14 @@
   "Sort two import statements."
   (let* ((stra (buffer-substring (car a) (cdr a)))
 	 (strb (buffer-substring (car b) (cdr b)))
-	 (lena (java-docs-package-length stra))
-	 (lenb (java-docs-package-length strb)))
+	 (lena (package-length stra))
+	 (lenb (package-length strb)))
     (if (= lena lenb)
 	(string< stra strb)
       (< lena lenb))))
 
-(defun java-docs-package-length (import)
+(defun package-length (import)
   "Return length package part of import statement."
   (- (string-match ".[^.]+$" import) (string-match " [^ ]" import) 1))
+
+(end-package)
