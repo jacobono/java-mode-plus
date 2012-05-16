@@ -85,6 +85,9 @@
 (defvar java-docs-current-root nil
   "Current root being indexed. Used to determine full class name.")
 
+(defvar java-docs-temp-pattern (concat temporary-file-directory "javadocs-")
+  "Pattern for unzipping .jar files containing docs.")
+
 (defun java-docs (&rest dirs)
   "Set the Javadoc search path to DIRS and index them."
   (let ((list (mapcar (lambda (dir) (expand-file-name (concat dir "/"))) dirs)))
@@ -137,9 +140,21 @@ hash plus version info."
     (if (and java-docs-enable-cache
              (file-exists-p cache-file))
         (java-docs-load-cache cache-file)
-      (java-docs-index dir hash)
+      (if (file-directory-p dir)
+          (java-docs-index dir hash)
+        (let ((tmpdir (java-docs-unzip (substring dir 0 -1)))) ; jar files
+          (let ((java-docs-current-root (concat tmpdir "/")))
+            (java-docs-index tmpdir hash))
+          (delete-directory tmpdir t)))
       (java-docs-save-cache cache-file dir hash)
       (java-docs-add-hash hash))))
+
+(defun java-docs-unzip (archive)
+  "Unzip the archive into a temporary directory and return the
+directory name."
+  (let ((dir (make-temp-name java-docs-temp-pattern)))
+    (call-process "unzip" nil nil nil "-d" dir archive)
+    dir))
 
 (defun java-docs-short-name (fullclass)
   "Return short name for given class."
