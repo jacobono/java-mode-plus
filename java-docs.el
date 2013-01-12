@@ -49,9 +49,6 @@
 (require 'cl)
 (require 'ido)
 
-;;;###autoload
-(global-set-key "\C-hj" 'java-docs-lookup)
-
 (defvar java-docs-enable-cache (featurep 'hashtable-print-readable)
   "Enable caching for faster loads.")
 
