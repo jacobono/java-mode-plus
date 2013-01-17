@@ -180,7 +180,7 @@
 
 ;; Closing remarks:
 
-;; As I develop and improve my Java workflow, I'm gradually building
+;; As I develop and improve my Java workflow, I'm gradually building
 ;; up java-mode-plus to match. As long as I continue to use Java, this
 ;; package will slowly grow.
 
@@ -197,53 +197,6 @@
   "Extensions to java-mode for further support with standard Java tools."
   :lighter " jm+"
   :keymap 'java-mode-plus-map)
-
-(defvar open-java-project-extensions '("xml" "java" "properties")
-  "File extensions to be opened when using `open-java-project'.")
-
-(defvar open-java-project-excludes '("build" ".git" ".svn" ".hg")
-  "Directories that shouldn't be followed by `open-java-project'.")
-
-(defvar java-package-roots '("src" "test")
-  "List of directories that tend to be at the root of packages.")
-
-;;;###autoload
-(defun ant-compile ()
-  "Traveling up the path, find build.xml file and run compile."
-  (interactive)
-  (with-temp-buffer
-    (while (and (not (file-exists-p "build.xml"))
-                (not (equal "/" default-directory)))
-      (cd ".."))
-    (call-interactively 'compile)))
-
-(defun open-java-project-file-p (file)
-  "Determine if file should be opened by `open-java-project'."
-  (let ((ext (file-name-extension file)))
-    (member ext open-java-project-extensions)))
-
-(defun open-java-project-dir-p (dir)
-  "Determine if directory should be opened by `open-java-project'."
-  (not (member dir open-java-project-excludes)))
-
-;; ID: 72dc0a9e-c41c-31f8-c8f5-d9db8482de1e
-;;;###autoload
-(defun open-java-project (dir)
-  "Open all java and xml source files and sub-directories below
-the given directory."
-  (interactive "DBase directory: ")
-  (let* ((list (directory-files dir t "^[^.]"))
-         (files (remove-if 'file-directory-p list))
-         (dirs (remove-if-not 'file-directory-p list)))
-    (dolist (file files)
-      (if (open-java-project-file-p file)
-          (find-file-noselect file)))
-    (dolist (dir dirs)
-      (when (open-java-project-dir-p dir)
-        (find-file-noselect dir)
-        (open-java-project dir)))))
-
-;;; Helper functions to determine properties of the current source
 
 ;;;###autoload
 (defun java-package ()
@@ -262,53 +215,13 @@ against `java-package-roots'."
   "Determine the class name from the filename."
   (file-name-sans-extension (file-name-nondirectory buffer-file-name)))
 
-;;; Define bindings for various Ant targets
-
-(defmacro ant-bind (key target)
-  "Define a key binding for an Ant target in java-mode."
-  `(lexical-let ((target ,target))
-     (define-key java-mode-plus-map ,key
-       (lambda (n)
-         (interactive "p")
-         (let* ((buffer-name (format "*compilation-%d*" n))
-                (compilation-buffer-name-function (lambda (x) buffer-name)))
-           (save-buffer)
-           (compile (format "ant -emacs %s -find" target) t))))))
-
-(defmacro ant-bind* (&rest keys/fns)
-  "Make several ant-bind bindings in a row."
-  `(progn
-     ,@(loop for (key fn) on keys/fns by 'cddr
-             collecting `(ant-bind (kbd ,key) ,fn))))
-
-(ant-bind* "C-c C-j c" 'compile		; default Ant target
-           "C-c C-j j" 'jar
-           "C-c C-j C" 'clean
-           "C-c C-j r" 'run
-           "C-c C-j t" 'test
-           "C-c C-j y" 'check
-           "C-c C-j f" 'format
-           "C-c C-j x" 'hotswap)
-
 ;; Add the very handy binding from java-docs
 (define-key java-mode-plus-map (kbd "C-c C-j i") 'add-java-import)
 
 (defun java-mode-short-keybindings ()
   "Create (old) short bindings for java-mode."
   (interactive)
-  (ant-bind* "C-x c" 'compile
-             "C-x j" 'jar
-             "C-x C" 'clean
-             "C-x r" 'run
-             "C-x t" 'test
-             "C-x y" 'check
-             "C-x f" 'format
-             "C-x x" 'hotswap)
   (define-key java-mode-plus-map (kbd "C-x I") 'add-java-import))
-
-;; This is here for the sake of the "run" Ant target above, so you can
-;; see your program's output live.
-(setq compilation-scroll-output t)
 
 ;; Enable the minor mode wherever java-mode is used.
 ;;;###autoload
