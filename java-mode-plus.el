@@ -72,18 +72,18 @@
   "Returns a guess of the package of the current Java source
 file, based on the absolute filename. Package roots are matched
 against `java-root-convention'."
-  (search-for-root-convention java-root-convention 
+  (java-mode-plus-search-for-root-convention java-root-convention 
 			      (file-name-directory buffer-file-name)))
 
-(defun search-for-root-convention (convention-test-list parent-directory)
+(defun java-mode-plus-search-for-root-convention (convention-test-list parent-directory)
   (if (string-match (car convention-test-list) parent-directory)
-      (guess-package (split-at-convention (car convention-test-list) parent-directory))
-    (search-for-root-convention (cdr convention-test-list) parent-directory)))
+      (java-mode-plus-guess-package (split-at-convention (car convention-test-list) parent-directory))
+    (java-mode-plus-search-for-root-convention (cdr convention-test-list) parent-directory)))
 
-(defun split-at-convention (convention parent-directory)
+(defun java-mode-plus-split-at-convention (convention parent-directory)
   (split-string parent-directory (concat convention "/")))
 
-(defun guess-package (package-list)
+(defun java-mode-plus-guess-package (package-list)
   (substring (replace-regexp-in-string "/" "." (pop (cdr package-list))) 0 -1))
 
 ;;;###autoload
