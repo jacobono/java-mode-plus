@@ -33,22 +33,11 @@
 
 ;; It is strongly recommended to use in conjunction with this package:
 ;;
-;; * java-docs - Found alongside java-mode-plus. Provides the
-;;               `add-java-import' function for quickly adding import
-;;               statements to the top of the source file.
 ;;
 ;; * ido-mode - Packaged with Emacs for great minibuffer completion.
 ;;
 ;; * winner-mode - Maximize Emacs, split into a bunch of windows, and
 ;;                 hop around them quickly with this.
-
-;; Enhancements to java-mode:
-
-;; * `insert-java-import' - If you have java-docs set up, you can
-;;     access the quick import insertion function.
-;;
-;;     * C-c C-j i - quickly select an import to insert
-
 
 ;;; Code:
 
@@ -90,9 +79,6 @@ against `java-root-convention'."
 (defun java-class-name ()
   "Determine the class name from the filename."
   (file-name-sans-extension (file-name-nondirectory buffer-file-name)))
-
-;; Add the very handy binding from java-docs
-(define-key java-mode-plus-map (kbd "C-c C-j i") 'add-java-import)
 
 ;; Enable the minor mode wherever java-mode is used.
 ;;;###autoload
