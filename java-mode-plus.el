@@ -77,7 +77,7 @@ against `java-root-convention'."
 
 (defun java-mode-plus-search-for-root-convention (convention-test-list parent-directory)
   (if (string-match (car convention-test-list) parent-directory)
-      (java-mode-plus-guess-package (split-at-convention (car convention-test-list) parent-directory))
+      (java-mode-plus-guess-package (java-mode-plus-split-at-convention (car convention-test-list) parent-directory))
     (java-mode-plus-search-for-root-convention (cdr convention-test-list) parent-directory)))
 
 (defun java-mode-plus-split-at-convention (convention parent-directory)
